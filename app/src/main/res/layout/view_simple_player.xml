@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:background="#000000">
+
+    <com.google.android.exoplayer2.ui.PlayerView
+        android:id="@+id/player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/loading_view"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        app:cardCornerRadius="3dp"
+        android:padding="25dp"
+        app:contentPadding="25dp"
+        app:cardBackgroundColor="#88000000"
+        app:cardElevation="0dp"
+        android:visibility="gone">
+
+        <ProgressBar
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:indeterminateBehavior="repeat"
+            android:indeterminateOnly="true"
+            android:indeterminateTint="#ffffff"
+            android:indeterminateTintMode="src_atop"/>
+
+    </androidx.cardview.widget.CardView>
+
+</RelativeLayout>
