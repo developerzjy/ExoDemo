@@ -1,8 +1,8 @@
 # ExoDemo
-仿抖音短视频播放Demo，实现了预缓存，使用EXO旧版本的CacheUtil实现
+Exo实现短视频播放的Demo，使用旧版本Exo的CacheUtil实现了预缓存（新版本的Exo已经弃用了CacheUtil）
 
-##### 1.预缓存
-PlayerCacheManager.getInstance().preCache(videoUrl);
+1.在合适的时机调用下面的代码预缓存视频
+`PlayerCacheManager.getInstance().preCache(videoUrl);`
 
-##### 2.播放视频的时候第三个参数传true表示使用缓存播放
-SimplePlayerView.setVideoPath(videoUrl, true, true);
+2.播放视频的时候第三个参数传true表示使用缓存播放
+`SimplePlayerView.setVideoPath(videoUrl, true, true);`
