@@ -2,6 +2,7 @@ package com.example.exodemo.widget;
 
 import android.content.Context;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewParent;
@@ -18,6 +19,8 @@ import com.chad.library.adapter.base.BaseQuickAdapter;
 import com.chad.library.adapter.base.BaseViewHolder;
 import com.example.exodemo.R;
 import com.example.exodemo.bean.VideoBean;
+import com.example.exodemo.player.AbsPlayerView;
+import com.example.exodemo.player.PlayerCacheManager;
 import com.example.exodemo.player.SimplePlayerView;
 import com.example.exodemo.util.ImageLoader;
 import com.example.exodemo.util.UIUtil;
@@ -31,12 +34,16 @@ import java.util.List;
  */
 public class VideoListView extends FrameLayout {
 
+    private static final String TAG = "VideoListView";
+
     private RecyclerView recyclerView;
     private MyAdapter adapter;
     private PagerSnapHelper snapHelper;
     private RecyclerViewPageChangeListenerHelper mPageChangeListener;
     private SimplePlayerView mPlayerView;
     private OnPageChangeListener mPlayerPageListener;
+
+    private View mCurItemView;
 
     public VideoListView(@NonNull Context context) {
         this(context, null);
@@ -58,7 +65,6 @@ public class VideoListView extends FrameLayout {
         snapHelper = new PagerSnapHelper();
         snapHelper.attachToRecyclerView(recyclerView);
 
-
         mPageChangeListener = new RecyclerViewPageChangeListenerHelper(snapHelper);
         recyclerView.addOnScrollListener(mPageChangeListener);
 
@@ -67,6 +73,18 @@ public class VideoListView extends FrameLayout {
 
     public void initPlayerView() {
         mPlayerView = new SimplePlayerView(getContext());
+
+        mPlayerView.addProgressListener((duration, currentPosition, bufferedPosition) -> {
+            Log.d(TAG, "ProgressListener: currentPosition=" + currentPosition + " duration=" + duration);
+        });
+
+        mPlayerView.addVideoListener(new AbsPlayerView.OnVideoListener() {
+            @Override
+            public void onRenderedFirstFrame() {
+                mCurItemView.findViewById(R.id.cover).setVisibility(GONE);
+            }
+        });
+
         if (mPlayerPageListener != null) {
             mPageChangeListener.removePageChangeListener(mPlayerPageListener);
         }
@@ -74,10 +92,8 @@ public class VideoListView extends FrameLayout {
             @Override
             public void onPageSelected(int position, View itemView, boolean isNext) {
                 changePlayerContainer(itemView);
-                if (isNext) {
-                    mPlayerView.playNext();
-                } else {
-                    mPlayerView.playPrevious();
+                if (!mPlayerView.isPlayWhenReady()) {
+                    mPlayerView.start();
                 }
             }
         };
@@ -96,13 +112,16 @@ public class VideoListView extends FrameLayout {
         protected void convert(BaseViewHolder helper, VideoBean item) {
             helper.itemView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, UIUtil.getRealScreenHeight(helper.itemView.getContext())));
             ImageLoader.load(helper.getView(R.id.cover), item.getCoverUrl());
+            helper.itemView.setTag(R.id.tag_note_book, item);
+
+            //预缓存视频
+            PlayerCacheManager.getInstance().preCache(item.getVideoUrl());
 
             if (isNewData && helper.getAdapterPosition() == 0) {
                 isNewData = false;
 
                 helper.itemView.post(() -> {
                     changePlayerContainer(helper.itemView);
-                    mPlayerView.start();
                 });
             }
         }
@@ -115,21 +134,32 @@ public class VideoListView extends FrameLayout {
     }
 
     private void changePlayerContainer(View itemView) {
-        ViewParent playerParent = mPlayerView.getParent();
-        if (playerParent instanceof ViewGroup) {
-            ((ViewGroup) playerParent).removeView(mPlayerView);
+        ViewParent oldParent = mPlayerView.getParent();
+        if (oldParent instanceof ViewGroup) {
+            ((ViewGroup) oldParent).removeView(mPlayerView);
+            ViewGroup oldRoot = (ViewGroup) oldParent.getParent();
+            oldRoot.findViewById(R.id.cover).setVisibility(VISIBLE);
         }
-        ViewGroup newContainer = itemView.findViewById(R.id.player_container);
-        newContainer.addView(mPlayerView);
+
+        mCurItemView = itemView;
+        ViewGroup newParent = itemView.findViewById(R.id.player_container);
+        newParent.addView(mPlayerView, 0);
+
+        VideoBean videoBean = (VideoBean) itemView.getTag(R.id.tag_note_book);
+
+        mPlayerView.setVideoPath(videoBean.getVideoUrl(), true, true);
     }
 
     public void setData(List<VideoBean> data) {
-        mPlayerView.clearVideoPath();
-        for (VideoBean video : data) {
-            mPlayerView.addVideoPath(video.getVideoUrl());
-        }
-
         adapter.setNewData(data);
+    }
+
+    public void onResume() {
+        mPlayerView.start();
+    }
+
+    public void onPause() {
+        mPlayerView.pause();
     }
 
     public void release() {

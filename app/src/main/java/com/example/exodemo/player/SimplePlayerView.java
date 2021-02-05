@@ -17,7 +17,6 @@ import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.ExoPlayerFactory;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
 import com.google.android.exoplayer2.source.ExtractorMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.dash.DashMediaSource;
@@ -29,10 +28,9 @@ import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSourceFactory;
 import com.google.android.exoplayer2.upstream.FileDataSourceFactory;
 import com.google.android.exoplayer2.util.Util;
+import com.google.android.exoplayer2.video.VideoListener;
 
 import java.io.File;
-
-import static com.google.android.exoplayer2.Player.REPEAT_MODE_OFF;
 
 /**
  * Author: zhangjianyang
@@ -40,12 +38,12 @@ import static com.google.android.exoplayer2.Player.REPEAT_MODE_OFF;
  */
 public class SimplePlayerView extends AbsPlayerView {
 
+    private static final String TAG = "SimplePlayerView";
+
     private SimpleExoPlayer player;
     private View loadingView;
 
     private String videoPath;
-
-    private ConcatenatingMediaSource mediaSource;
 
     public SimplePlayerView(@NonNull Context context) {
         this(context, null);
@@ -65,13 +63,22 @@ public class SimplePlayerView extends AbsPlayerView {
                 new DefaultRenderersFactory(context),
                 new DefaultTrackSelector(),
                 new DefaultLoadControl());
-        player.setRepeatMode(REPEAT_MODE_OFF);
+        player.setRepeatMode(Player.REPEAT_MODE_ONE);
 
         PlayerView playerView = findViewById(R.id.player_view);
         playerView.setPlayer(player);
         playerView.setUseController(false);
         playerView.setControllerVisibilityListener(null);
         playerView.setErrorMessageProvider(null);
+
+        player.addVideoListener(new VideoListener() {
+            @Override
+            public void onRenderedFirstFrame() {
+                for (OnVideoListener listener : videoListeners) {
+                    listener.onRenderedFirstFrame();
+                }
+            }
+        });
 
         player.addListener(new Player.EventListener() {
             @Override
@@ -88,21 +95,23 @@ public class SimplePlayerView extends AbsPlayerView {
                 switch (playbackState) {
                     case Player.STATE_ENDED:
                         //end
-                        if (mPlayerStateListener != null) {
-                            mPlayerStateListener.onEnd();
+                        if (mInnerPlayerStateListener != null) {
+                            mInnerPlayerStateListener.onEnd();
                         }
                         hideLoading();
                         break;
                     case Player.STATE_READY:
                         hideLoading();
                         if (playWhenReady) { //start
-                            if (mPlayerStateListener != null) {
-                                mPlayerStateListener.onStart();
+                            if (mInnerPlayerStateListener != null) {
+                                mInnerPlayerStateListener.onStart();
                             }
+                            startProgressRunnable();
                         } else { //stop
-                            if (mPlayerStateListener != null) {
-                                mPlayerStateListener.onPause();
+                            if (mInnerPlayerStateListener != null) {
+                                mInnerPlayerStateListener.onPause();
                             }
+                            stopProgressRunnable();
                         }
                         break;
                     case Player.STATE_BUFFERING:
@@ -115,28 +124,30 @@ public class SimplePlayerView extends AbsPlayerView {
 
             @Override
             public void onPlayerError(ExoPlaybackException error) {
-                if (mPlayerStateListener != null) {
-                    mPlayerStateListener.onError();
+                if (mInnerPlayerStateListener != null) {
+                    mInnerPlayerStateListener.onError();
                 }
+                hideLoading();
+                Log.d(TAG, "onPlayerError: " + error);
             }
         });
     }
 
-    private int inferContentType(Uri uri) {
-        String fileName = Util.toLowerInvariant(uri.toString());
-        if (fileName.endsWith(".m3u8")) {
-            return C.TYPE_HLS;
+    private Runnable loadingRunnable = new Runnable() {
+        @Override
+        public void run() {
+            loadingView.setVisibility(VISIBLE);
         }
-        return Util.inferContentType(uri);
-    }
+    };
 
     @Override
     public void showLoading() {
-        loadingView.setVisibility(VISIBLE);
+        postDelayed(loadingRunnable, 1000);
     }
 
     @Override
     public void hideLoading() {
+        removeCallbacks(loadingRunnable);
         loadingView.setVisibility(GONE);
     }
 
@@ -151,14 +162,24 @@ public class SimplePlayerView extends AbsPlayerView {
     }
 
     @Override
-    public void setVideoPath(String path, boolean isPlay) {
-        Log.d("SimplePlayerView", "setVideoPath: path = " + path);
+    public void setVideoPath(String path, boolean isPlayWhenReady) {
+        setVideoPath(path, isPlayWhenReady, true);
+    }
+
+    @Override
+    public void setVideoPath(String path, boolean isPlayWhenReady, boolean useCache) {
+        Log.d(TAG, "setVideoPath: path = " + path);
         videoPath = path;
-        mediaSource = new ConcatenatingMediaSource();
-        addVideoPath(path);
+
+        MediaSource mediaSource;
+        if (useCache) {
+            mediaSource = PlayerCacheManager.getInstance().getCacheMediaSource(path);
+        } else {
+            mediaSource = createMediaSource(path);
+        }
 
         player.prepare(mediaSource);
-        player.setPlayWhenReady(isPlay);
+        player.setPlayWhenReady(isPlayWhenReady);
     }
 
     private MediaSource createMediaSource(String path) {
@@ -187,6 +208,15 @@ public class SimplePlayerView extends AbsPlayerView {
                 break;
         }
         return videoSource;
+    }
+
+
+    private int inferContentType(Uri uri) {
+        String fileName = Util.toLowerInvariant(uri.toString());
+        if (fileName.endsWith(".m3u8")) {
+            return C.TYPE_HLS;
+        }
+        return Util.inferContentType(uri);
     }
 
     @Override
@@ -220,49 +250,19 @@ public class SimplePlayerView extends AbsPlayerView {
     }
 
     @Override
-    public boolean isPlaying() {
+    public boolean isPlayWhenReady() {
         return player.getPlayWhenReady();
     }
 
-
-    public void clearVideoPath() {
-        mediaSource = null;
-        player.stop();
-    }
-
-    public void addVideoPath(String path) {
-        boolean needPrepare = false;
-        if (mediaSource == null) {
-            mediaSource = new ConcatenatingMediaSource();
-            needPrepare = true;
-        }
-
-        MediaSource ms = createMediaSource(path);
-        mediaSource.addMediaSource(ms);
-
-        if (needPrepare) {
-            player.prepare(mediaSource);
-            player.setPlayWhenReady(false);
-        }
-    }
-
-    public void playPrevious() {
-        player.previous();
-        if (!isPlaying()) {
-            start();
-        }
-    }
-
-    public void playNext() {
-        player.next();
-        if (!isPlaying()) {
-            start();
-        }
+    @Override
+    public boolean isPlaying() {
+        return player.getPlayWhenReady();
     }
 
     @Override
     public void release() {
         if (player != null) {
+            stopProgressRunnable();
             player.release();
             player = null;
             removeAllViews();

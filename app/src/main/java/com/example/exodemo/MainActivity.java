@@ -16,6 +16,8 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
+    private VideoListView videoListView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Window window = getWindow();
@@ -31,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_main);
+        videoListView = findViewById(R.id.video_list_view);
 
         initVideoListView();
     }
@@ -49,38 +52,24 @@ public class MainActivity extends AppCompatActivity {
         data.add(new VideoBean("TestVideo-8", "https://ss0.bdstatic.com/70cFuHSh_Q1YnxGkpoWK1HF6hhy/it/u=3545561584,783374626&fm=26&gp=0.jpg", "https://storage.googleapis.com/exoplayer-test-media-1/mp4/frame-counter-one-hour.mp4"));
         data.add(new VideoBean("TestVideo-9", "https://ss1.bdstatic.com/70cFvXSh_Q1YnxGkpoWK1HF6hhy/it/u=10400358,3341701483&fm=26&gp=0.jpg", "https://storage.googleapis.com/exoplayer-test-media-1/mp4/dizzy-with-tx3g.mp4"));
 
-        VideoListView videoListView = findViewById(R.id.video_list_view);
         videoListView.setData(data);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        videoListView.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        videoListView.onPause();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        VideoListView videoListView = findViewById(R.id.video_list_view);
         videoListView.release();
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

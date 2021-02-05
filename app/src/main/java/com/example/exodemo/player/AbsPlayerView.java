@@ -7,22 +7,29 @@ import android.widget.FrameLayout;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Author: zhangjianyang
  * Date: 2020/11/21
  */
 public abstract class AbsPlayerView extends FrameLayout {
 
-    protected OnProgressListener mProgressListener;
-    protected OnPlayerStateListener mPlayerStateListener;
+    final protected OnProgressListener mInnerProgressListener;
+    final protected OnPlayerStateListener mInnerPlayerStateListener;
+
+    private List<OnProgressListener> progressListeners = new ArrayList<>();
+    private List<OnPlayerStateListener> playerStateListeners = new ArrayList<>();
+    protected List<OnVideoListener> videoListeners = new ArrayList<>();
 
     private Runnable runnable = new Runnable() {
         @Override
         public void run() {
-            if (mProgressListener != null) {
-                mProgressListener.onProgress(getDuration(), getCurrentPosition(), getBufferedPosition());
+            if (mInnerProgressListener != null) {
+                mInnerProgressListener.onProgress(getDuration(), getCurrentPosition(), getBufferedPosition());
             }
-            postDelayed(runnable, 1000);
+            postDelayed(runnable, 500);
         }
     };
 
@@ -36,26 +43,50 @@ public abstract class AbsPlayerView extends FrameLayout {
 
     public AbsPlayerView(@NonNull Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+
+        mInnerProgressListener = (duration, currentPosition, bufferedPosition) -> {
+            for (OnProgressListener listener : progressListeners) {
+                listener.onProgress(duration, currentPosition, bufferedPosition);
+            }
+        };
+
+        mInnerPlayerStateListener = new OnPlayerStateListener() {
+            @Override
+            public void onStart() {
+                for (OnPlayerStateListener listener : playerStateListeners) {
+                    listener.onStart();
+                }
+            }
+
+            @Override
+            public void onPause() {
+                for (OnPlayerStateListener listener : playerStateListeners) {
+                    listener.onPause();
+                }
+            }
+
+            @Override
+            public void onEnd() {
+                for (OnPlayerStateListener listener : playerStateListeners) {
+                    listener.onEnd();
+                }
+            }
+
+            @Override
+            public void onError() {
+                for (OnPlayerStateListener listener : playerStateListeners) {
+                    listener.onError();
+                }
+            }
+        };
     }
 
-    @Override
-    protected void onAttachedToWindow() {
-        super.onAttachedToWindow();
-        startRunnable();
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-        super.onDetachedFromWindow();
-        stopRunnable();
-    }
-
-    private void startRunnable() {
+    protected void startProgressRunnable() {
         removeCallbacks(runnable);
         post(runnable);
     }
 
-    private void stopRunnable() {
+    protected void stopProgressRunnable() {
         removeCallbacks(runnable);
     }
 
@@ -67,7 +98,17 @@ public abstract class AbsPlayerView extends FrameLayout {
 
     public abstract void setVideoPath(String path);
 
-    public abstract void setVideoPath(String path, boolean isPlay);
+    public abstract void setVideoPath(String path, boolean isPlayWhenReady);
+
+    /**
+     * 设置视频路径
+     * @param path 可为本地路径或者在线url
+     * @param isPlayWhenReady 视频准备完成后是否立即播放（如果为false，需要主动调用{@link #start()}进行播放）
+     * @param useCache 是否使用缓存
+     */
+    public abstract void setVideoPath(String path, boolean isPlayWhenReady, boolean useCache);
+
+    public abstract boolean isPlayWhenReady();
 
     public abstract void start();
 
@@ -85,12 +126,28 @@ public abstract class AbsPlayerView extends FrameLayout {
 
     public abstract void release();
 
-    public void setOnProgressListener(OnProgressListener listener) {
-        mProgressListener = listener;
+    public void addProgressListener(OnProgressListener listener) {
+        progressListeners.add(listener);
     }
 
-    public void setOnPlayerStateListener(OnPlayerStateListener listener) {
-        mPlayerStateListener = listener;
+    public void removeProgressListener(OnProgressListener listener) {
+        progressListeners.remove(listener);
+    }
+
+    public void addPlayerStateListener(OnPlayerStateListener listener) {
+        playerStateListeners.add(listener);
+    }
+
+    public void removePlayerStateListener(OnPlayerStateListener listener) {
+        playerStateListeners.remove(listener);
+    }
+
+    public void addVideoListener(OnVideoListener listener) {
+        videoListeners.add(listener);
+    }
+
+    public void removeVideoListener(OnVideoListener listener) {
+        videoListeners.remove(listener);
     }
 
     public interface OnProgressListener {
@@ -108,6 +165,11 @@ public abstract class AbsPlayerView extends FrameLayout {
         }
 
         default void onError() {
+        }
+    }
+
+    public interface OnVideoListener {
+        default void onRenderedFirstFrame() {
         }
     }
 }
